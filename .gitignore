@@ -36,4 +36,4 @@ MANIFEST
 # virtualenv stuff
 /.venv
 venv/
-
+development/

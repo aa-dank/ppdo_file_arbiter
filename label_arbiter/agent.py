@@ -1,12 +1,15 @@
-# label_arbiter/labeling/labeler_agent.py
+# agent.py
 
 """
 LabelerAgent coordinates file parsing, context assembly, and calling
 an LLM (via LangGraph or another service) to generate applicable
 filing code labels for a given PDF.
 """
-
+import openai
+import os
+from jinja2 import Environment, FileSystemLoader
 from typing import List, Any
+from utils.file_parser import parse_pdf
 
 class LabelerAgent:
     def __init__(self, llm_client: Any = None):
@@ -39,53 +42,33 @@ class LabelerAgent:
         return labels
 
     def _extract_file_metadata(self, file_path: str) -> dict:
-        """
-        Stub method to parse the file for relevant metadata:
-        e.g. project number, participants, or date range.
-        Replace with real PDF parsing logic.
-        """
-        # TODO: Integrate a utility from label_arbiter.utils.file_parser
-        # e.g.: metadata = parse_pdf(file_path)
-        # For now, return a placeholder
-        return {
-            "file_name": file_path,
-            "project_number": "UNKNOWN",
-            "participants": [],
-            "dates": []
-        }
+        # Use parse_pdf to get basic metadata
+        metadata = parse_pdf(file_path)
+        # You could extend this dictionary with project_number, participants, etc. if known
+        # for now just return the parse_pdf result or add fields
+        metadata["project_number"] = "UNKNOWN"
+        metadata["participants"]   = []
+        metadata["dates"]          = []
+        return metadata
 
     def _build_prompt(self, metadata: dict) -> str:
-        """
-        Combine metadata, instructions, and any relevant context (like
-        filing code documentation) into a well-formed LLM prompt.
-        """
-        # TODO: Load or inject actual instructions for labeling from your docs or config
-        instructions = (
-            "You are an expert in archiving UCSC construction project files. "
-            "Given the following metadata, please suggest any relevant filing code labels. "
-            "These labels can be non-mutually exclusive. "
-            "Metadata:\n"
-        )
-        # Build a simple textual representation
-        for key, value in metadata.items():
-            instructions += f"- {key}: {value}\n"
+        # Suppose you placed the templates in "labeling/templates"
+        template_dir = os.path.join(os.path.dirname(__file__), "labeling")
+        env = Environment(loader=FileSystemLoader(template_dir))
 
-        return instructions
+        template = env.get_template("prompt_template.jinja2")
+        prompt_text = template.render(metadata=metadata)
+        return prompt_text
 
     def _invoke_llm(self, prompt_text: str) -> str:
-        """
-        Send the prompt_text to an LLM and return the response.
-        This is a stub; integrate your chosen method (LangGraph, OpenAI, etc.).
-        """
-        # Example placeholder code:
-        # response = self.llm_client.run(prompt_text)
-        # return response
-
-        # For now, we mock a response
-        mock_response = (
-            "Likely labels are: [A1, C2, G12]. Explanation: ... (truncated) ..."
+        openai.api_key = os.getenv("OPENAI_API_KEY", "<fallback_or_error_handling>")
+        response = openai.Completion.create(
+            engine="text-davinci-003",
+            prompt=prompt_text,
+            max_tokens=256,
+            temperature=0.7,
         )
-        return mock_response
+        return response.choices[0].text.strip()
 
     def _parse_llm_response(self, response: str) -> List[str]:
         """
